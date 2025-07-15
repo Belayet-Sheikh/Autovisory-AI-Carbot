@@ -35,10 +35,12 @@ def load_and_prepare_data():
     """Loads all datasets and prepares them for the app."""
     try:
         # === NEW CODE: Load data from GitHub Raw URLs ===
-        url_gas = "https://raw.githubusercontent.com/Belayet-Sheikh/Autovisory-Carbot/main/Data/data.csv"
-        url_ev = "https://raw.githubusercontent.com/Belayet-Sheikh/Autovisory-Carbot/main/Data/electric-vehicle-population-data.csv"
-        url_used_us = "https://raw.githubusercontent.com/Belayet-Sheikh/Autovisory-Carbot/main/Data/vehicles.csv"
-        url_used_europe = "https://raw.githubusercontent.com/Belayet-Sheikh/Autovisory-Carbot/main/Data/car_price.csv"
+
+        url_gas = "https://raw.githubusercontent.com/Belayet-Sheikh/Autovisory-AI-Carbot/main/Data/data.csv"
+        url_ev = "https://raw.githubusercontent.com/Belayet-Sheikh/Autovisory-AI-Carbot/main/Data/electric-vehicle-population-data.csv"
+        url_used_us = "https://raw.githubusercontent.com/Belayet-Sheikh/Autovisory-AI-Carbot/main/Data/vehicles.csv"
+        url_used_europe = "https://raw.githubusercontent.com/Belayet-Sheikh/Autovisory-AI-Carbot/main/Data/car_price.csv"
+
 
         df_gas = pd.read_csv(url_gas)
         df_ev = pd.read_csv(url_ev)
