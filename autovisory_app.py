@@ -30,16 +30,21 @@ except Exception as e:
 
 
 @st.cache_data
-@st.cache_data
+
+
+
 def load_and_prepare_data():
     """Loads all datasets and prepares them for the app."""
     try:
         # === NEW CODE: Load data from GitHub Raw URLs ===
 
-        df_gas = pd.read_csv('data/data.csv')
-        df_ev = pd.read_csv('data/electric_vehicle_population_data.csv')
-        df_used_us = pd.read_csv('data/vehicles.csv')
-        df_used_europe = pd.read_csv('data/car_price.csv')
+        try:
+        base_url = "https://raw.githubusercontent.com/Belayet-Sheikh/Autovisory-AI-Carbot/main/data/"
+        
+        df_gas = pd.read_csv(f'{base_url}data.csv')
+        df_ev = pd.read_csv(f'{base_url}electric_vehicle_population_data.csv')
+        df_used_us = pd.read_csv(f'{base_url}vehicles.csv')
+        df_used_europe = pd.read_csv(f'{base_url}car_price.csv')
         # === END OF NEW CODE ===
 
         # --- Process Gas Cars ---
