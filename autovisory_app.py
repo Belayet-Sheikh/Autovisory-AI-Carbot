@@ -34,9 +34,7 @@ except Exception as e:
 
 
 def load_and_prepare_data():
-    """Loads all datasets and prepares them for the app."""
-    try:
-        # === NEW CODE: Load data from GitHub Raw URLs ===
+
 
         try:
         base_url = "https://raw.githubusercontent.com/Belayet-Sheikh/Autovisory-AI-Carbot/main/data/"
