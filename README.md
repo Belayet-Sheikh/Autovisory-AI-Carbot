@@ -2,7 +2,7 @@
 
 **Autovisory** is an interactive, AI-powered chatbot designed to be your expert guide in the complex world of cars. Powered by Google's Gemini Pro, this app helps users get clear, data-driven recommendations, comparisons, and analyses for new and used cars across the US and European markets.
 
-**[➡️ View the Live App Here]()**  <!-- ## 👈 PASTE YOUR LIVE APP LINK HERE! ## -->
+**[➡️ View the Live App Here](https://autovisory-demo-app.streamlit.app/)**  <!-- ## 👈 PASTE YOUR LIVE APP LINK HERE! ## -->
 
 ![Screenshot of Autovisory App](https://i.imgur.com/your-screenshot-url.png) <!-- ## 👈 Optional: Add a screenshot of your app ## -->
 
