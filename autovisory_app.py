@@ -1,372 +1,389 @@
+# -*- coding: utf-8 -*-
+"""Autovisory-AI-Carbot.ipynb
 
 
 
 
-# ==============================================================================
-# STEP 1: INSTALL LIBRARIES AND CONFIGURE API
-# ==============================================================================
-import streamlit as st
+# used car
+import kagglehub
+
+# Download latest version
+path = kagglehub.dataset_download("austinreese/craigslist-carstrucks-data")
+
+print("Path to dataset files:", path)
+
+# European car
+import kagglehub
+
+# Download latest version
+path = kagglehub.dataset_download("alemazz11/europe-car-prices")
+
+print("Path to dataset files:", path)
+
+# Gas Car
+import kagglehub
+
+# Download latest version
+path = kagglehub.dataset_download("CooperUnion/cardataset")
+
+print("Path to dataset files:", path)
+
+# EV
+import kagglehub
+
+# Download latest version
+path = kagglehub.dataset_download("gunapro/electric-vehicle-population-data")
+
+print("Path to dataset files:", path)
+
+
+
+
+
+# Step 1 Installing all the dependencies
+
+
+!pip install -q -U google-generativeai pandas
+
 import google.generativeai as genai
 import pandas as pd
-import numpy as np
 import json
+import numpy as np
 import re
+from google.colab import userdata
 
-# ==============================================================================
-# STEP 2: LOAD & PREPARE DATASETS WITH CACHING
-# ==============================================================================
-
-# --- Page and Model Configuration ---
-st.set_page_config(page_title="Autovisory - AI Car Analyst", page_icon="🚗", layout="wide")
-
-# --- Load API Key and Configure AI Model ---
+# Load API Key from Colab Secrets
 try:
-    GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
+    GOOGLE_API_KEY = userdata.get('GOOGLE_API_KEY')
     genai.configure(api_key=GOOGLE_API_KEY)
-    model = genai.GenerativeModel('models/gemini-2.5-pro')
+    print("API Key loaded successfully from Colab Secrets!")
 except Exception as e:
-    st.error(f"Error loading API key or configuring the model: {e}")
-    st.stop()
+    print("Could not load API key. Make sure 'GOOGLE_API_KEY' is set in Colab Secrets.")
+    raise e
 
 
-@st.cache_data
+# STEP 2: LOADING & PREPARING FULL DATASETS
+
+print("\n--- Building Master Databases from Full Datasets ---")
+try:
+
+    df_gas = pd.read_csv('/kaggle/input/cardataset/data.csv')
+    df_ev = pd.read_csv('/kaggle/input/electric-vehicle-population-data/Electric_Vehicle_Population_Data.csv')
+    df_used_us = pd.read_csv('/kaggle/input/craigslist-carstrucks-data/vehicles.csv')
+    df_used_europe = pd.read_csv('/kaggle/input/europe-car-prices/car_prices.csv')
+
+    # --- Data Cleaning & Prep ---
+    df_gas.columns = df_gas.columns.str.replace(' ', '_').str.lower()
+    df_gas = df_gas.rename(columns={'msrp': 'price'})
+    df_gas['fuel_type'] = 'Gasoline'
+    df_gas['electric_range'] = 0
+
+    df_ev.columns = df_ev.columns.str.replace(' ', '_').str.lower()
+    df_ev = df_ev.rename(columns={'model_year': 'year'})
+    df_ev['price'] = np.nan
+    df_ev['engine_hp'] = np.nan
+    df_ev['city_mpg'] = np.nan
+    df_ev['fuel_type'] = 'Electric'
+    df_ev['vehicle_style'] = 'Electric'
+
+    cols = ['make', 'model', 'year', 'price', 'vehicle_style', 'engine_hp', 'city_mpg', 'fuel_type', 'electric_range']
+    df_new_us_master = pd.concat([df_gas[cols], df_ev[cols]], ignore_index=True)
+    df_new_us_master = df_new_us_master.dropna(subset=['year', 'make', 'model'])
+    df_new_us_master['year'] = df_new_us_master['year'].astype(int)
+    print("✅ New US Car Master Dataset created.")
+
+    df_used_us = df_used_us.rename(columns={'manufacturer': 'make'})
+    used_us_cols = ['make', 'model', 'year', 'price', 'odometer']
+    df_used_us_master = df_used_us[used_us_cols].dropna()
+    df_used_us_master = df_used_us_master[df_used_us_master['price'].between(100, 250000)]
+    df_used_us_master['year'] = df_used_us_master['year'].astype(int)
+    df_used_us_master['odometer'] = df_used_us_master['odometer'].astype(int)
+    print("✅ Used US Car Master Dataset created.")
+
+    df_used_europe = df_used_europe.rename(columns={
+        'Brand': 'make', 'Model': 'model', 'Year': 'year', 'Price': 'price', 'Kilometers': 'odometer'})
+    used_europe_cols = ['make', 'model', 'year', 'price', 'odometer']
+    df_used_europe_master = df_used_europe[used_europe_cols].dropna()
+    df_used_europe_master['year'] = pd.to_numeric(df_used_europe_master['year'], errors='coerce')
+    df_used_europe_master['odometer'] = pd.to_numeric(df_used_europe_master['odometer'], errors='coerce')
+    df_used_europe_master = df_used_europe_master.dropna()
+    df_used_europe_master['year'] = df_used_europe_master['year'].astype(int)
+    df_used_europe_master['odometer'] = df_used_europe_master['odometer'].astype(int)
+    print("✅ Used Europe Car Master Dataset created.")
+
+except FileNotFoundError as e:
+    print(f"ERROR: Missing file - {e}. Ensure Kaggle datasets are accessible in this environment.")
 
 
-
-def load_and_prepare_data():
-
-
-        try:
-        base_url = "https://raw.githubusercontent.com/Belayet-Sheikh/Autovisory-AI-Carbot/main/data/"
-        
-        df_gas = pd.read_csv(f'{base_url}data.csv')
-        df_ev = pd.read_csv(f'{base_url}electric_vehicle_population_data.csv')
-        df_used_us = pd.read_csv(f'{base_url}vehicles.csv')
-        df_used_europe = pd.read_csv(f'{base_url}car_price.csv')
-        # === END OF NEW CODE ===
-
-        # --- Process Gas Cars ---
-        df_gas.columns = df_gas.columns.str.replace(' ', '_').str.lower()
-        df_gas = df_gas.rename(columns={'msrp': 'price'})
-        df_gas['fuel_type'] = 'Gasoline'
-        df_gas['electric_range'] = 0
-
-        # --- Process EV Cars ---
-        df_ev.columns = df_ev.columns.str.replace(' ', '_').str.lower()
-        df_ev = df_ev.rename(columns={'model_year': 'year'})
-        df_ev['price'] = np.nan
-        df_ev['engine_hp'] = np.nan
-        df_ev['city_mpg'] = np.nan
-        df_ev['fuel_type'] = 'Electric'
-        df_ev['vehicle_style'] = 'Electric'
-
-        # --- Create Master Datasets ---
-        cols = ['make', 'model', 'year', 'price', 'vehicle_style', 'engine_hp', 'city_mpg', 'fuel_type', 'electric_range']
-        df_new_us_master = pd.concat([df_gas[cols], df_ev[cols]], ignore_index=True).dropna(subset=['year', 'make', 'model'])
-        df_new_us_master['year'] = df_new_us_master['year'].astype(int)
-
-        df_used_us = df_used_us.rename(columns={'manufacturer': 'make'})
-        used_us_cols = ['make', 'model', 'year', 'price', 'odometer']
-        df_used_us_master = df_used_us[used_us_cols].dropna()
-        df_used_us_master = df_used_us_master[df_used_us_master['price'].between(100, 250000)]
-        df_used_us_master['year'] = df_used_us_master['year'].astype(int)
-        df_used_us_master['odometer'] = df_used_us_master['odometer'].astype(int)
-
-        df_used_europe = df_used_europe.rename(columns={'Brand': 'make', 'Model': 'model', 'Year': 'year', 'Price': 'price', 'Kilometers': 'odometer'})
-        used_europe_cols = ['make', 'model', 'year', 'price', 'odometer']
-        df_used_europe_master = df_used_europe[used_europe_cols].dropna()
-        df_used_europe_master['year'] = pd.to_numeric(df_used_europe_master['year'], errors='coerce').dropna().astype(int)
-        df_used_europe_master['odometer'] = pd.to_numeric(df_used_europe_master['odometer'], errors='coerce').dropna().astype(int)
-
-        return df_new_us_master, df_used_us_master, df_used_europe_master
-
-    except FileNotFoundError as e:
-        # This error is now unlikely, but we'll keep it as a safeguard.
-        st.error(f"ERROR: A data URL is broken or the file is missing from the repository - {e}.")
-        st.stop()
-    except Exception as e:
-        # A general error for other issues, like network problems.
-        st.error(f"An error occurred while loading data: {e}")
-        st.stop()
-
-
-# Load the data
-df_new_us_master, df_used_us_master, df_used_europe_master = load_and_prepare_data()
-
-
-# ==============================================================================
 # STEP 3: AI INTENT & RESPONSE LOGIC
-# ==============================================================================
+
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 def determine_next_action(history, user_query):
     history_str = "\n".join([f"{h['role']}: {h['parts']}" for h in history])
+
+
     prompt = f"""
-    You are Autovisory, a helpful, expert, and impartial AI assistant specializing exclusively in cars. Your primary mission is to be a trusted advisor, guiding users through the complexities of buying and understanding cars. You are not a salesperson; your advice is objective and always centered on the user's needs.
+    You are Autovisory, a helpful and conversational AI car advisor. Your goal is to classify the user's most recent query into a specific action.
 
+    Based on the user's most recent query, determine the primary intent by following these rules IN ORDER:
 
-    Step 1: Initial Query Assessment
-First, analyze the user's query.
-If the query is about anything NOT related to cars (e.g., movies, weather, politics, recipes), you MUST respond only with the following JSON object and nothing else:
-{{"action": "reject", "response": "I'm here to help only with car-related questions. Could you ask something about cars?"}}
-If the query is car-related, proceed to Step 2 to determine the user's intent.
+    1.  **Small Talk:** If the query is a simple greeting ('hi', 'hello'), farewell ('bye'), expression of gratitude ('thanks', 'thank you'), or other common pleasantries that DO NOT contain a car request, your action is "small_talk". Generate an appropriate, polite response.
+        - Example for "thanks": {{"action": "small_talk", "response": "You're very welcome! Is there anything else I can help you analyze or compare?"}}
+        - Example for "hello": {{"action": "small_talk", "response": "Hello! How can I help you with your car search today?"}}
 
-    Step 2: Intent-Based Action Protocol
-Decide the user's intent and follow the corresponding protocol precisely.
-Intent: clarify
-Condition: The user's query is vague, unclear, or they state they don't know where to start (e.g., "What car should I buy?", "I need a new car").
-Action: Your goal is to understand their needs. Ask a series of clarifying questions to gather essential information. Do not suggest any cars yet. Your response should be a friendly set of questions.
-Questions to Ask:
-"To give you the best recommendation, I need a little more information. Could you tell me about:"
-"1. Budget: What is your approximate budget for the car?"
-"2. Primary Use: What will you mainly be using it for (like daily commuting, family trips, or off-roading)?"
-"3. Passengers: How many people will you typically need to carry?"
-"4. Priorities: What are the top 3 most important things for you in a car (e.g., fuel efficiency, safety, performance, reliability, cargo space, latest tech)?"
-"5. Lifestyle: Do you have any specific needs, like carrying pets, sports gear, or needing to tow anything?"
-Intent: recommend
-Condition: The user has provided enough information for a recommendation, either in their initial query or after you've clarified.
-Action: Suggest 2-3 well-suited car models. For each suggestion, provide a brief, compelling summary explaining why it fits their stated needs. Mention key strengths related to their priorities.
-Example Output Structure: "Based on your need for a fuel-efficient family car under $30,000, here are a couple of great options:
-Honda CR-V: It's known for its outstanding reliability and has a huge, practical interior, making it perfect for family duties. Its fuel economy is also excellent for its class.
-Toyota RAV4 Hybrid: This would be a top choice for maximizing fuel efficiency. It also comes standard with many safety features and has a strong reputation for holding its value."
-Intent: analyze
-Condition: The user wants information on a specific car model (e.g., "Tell me about the 2024 Ford Mustang," "What do you know about the Kia Telluride?").
-Action: Provide a comprehensive yet easy-to-digest overview of the vehicle.
-Information to Include:
-Summary: A brief paragraph on what the car is and who it's for.
-Pros: List 3-4 key strengths (e.g., "Powerful engine options," "High-quality interior," "Excellent safety scores").
-Cons: List 3-4 key weaknesses (e.g., "Poor rear visibility," "Below-average fuel economy for its class," "Stiff ride").
-Key Specifications: Mention engine choices, horsepower, fuel economy (MPG/L/100km), and drivetrain options.
-Safety & Reliability: Reference ratings from trusted sources like the IIHS or NHTSA if available.
-Intent: compare
-Condition: The user wants to compare two or more car models (e.g., "Honda Civic vs. Toyota Corolla," "Compare the F-150 and the Silverado").
-Action: Create a structured, direct comparison. A side-by-side table is highly effective. After the table, provide a concluding summary.
-Comparison Points: Always include Price Range, Fuel Economy, Performance (engine/HP), Interior/Cargo Space, and Safety/Reliability Ratings. Add other points as relevant (e.g., Towing Capacity for trucks, EV Range for electric cars).
-Concluding Summary: Briefly state which car is better for different types of buyers. (e.g., "The Civic may be better for those who prioritize a fun driving experience, while the Corolla is a top choice for those focused on maximum reliability and comfort.")
-Intent: answer_general
-Condition: The user has a general knowledge question about cars, brands, or technology (e.g., "What's the difference between a hybrid and a PHEV?", "Are Kia cars reliable?", "What is a CVT?").
-Action: Provide a clear, accurate, and simple explanation. Avoid overly technical jargon. Your goal is to educate the user.
+    2.  **Clarify:** If the query is a vague car-related request (e.g., "I need a car"), your action is "clarify".
+        - JSON: {{"action": "clarify", "response": "To give you the best recommendation, I need a little more information. Could you tell me about your budget, primary use, and priorities?"}}
 
-Step 3: Overarching Guiding Principles (Apply to all car-related responses)
-Impartiality: Never show bias towards a brand. Always present a balanced view.
-Safety First: Always prioritize safety. Highlight vehicles with strong safety ratings.
-Data-Driven: When citing safety or reliability, you can mention the source (e.g., "According to the IIHS...").
-No Financial Advice: You can discuss a car's price (MSRP), but do not advise a user on what they can afford or how to finance a vehicle.
-Honesty: If you don't have specific information, state that it's unavailable rather than guessing.
-If the use say thank you or thank you for help. Then reply with welcome and ask they need more help of not.
+    3.  **Recommend:** If the user provides details for a recommendation OR asks to modify previous criteria (e.g., "what about something cheaper?", "change my preference to sport cars"), your action is "recommend".
+        - JSON: {{"action": "recommend", "response": "Okay, based on your new preferences, I'm finding some options for you..."}}
 
-    USER QUERY: "{user_query}"
-    Conversation History:\n{history_str}
-    Return only valid JSON.
+    4.  **Analyze:** If the user asks for details about ONE specific car model, your action is "analyze".
+        - JSON: {{"action": "analyze", "response": "Let me pull up the details for that model."}}
+
+    5.  **Compare:** If the user asks to compare TWO OR MORE specific car models, your action is "compare".
+        - JSON: {{"action": "compare", "response": "Excellent comparison. Let me put the specs side-by-side."}}
+
+    6.  **Answer General:** If the user asks a general knowledge question about cars (e.g., "What is a hybrid?"), your action is "answer_general".
+        - JSON: {{"action": "answer_general", "response": "That's a great question. Here's an explanation..."}}
+
+    7.  **Reject:** If the query is CLEARLY not about cars (e.g., "What's the weather?"), your action is "reject".
+        - JSON: {{"action": "reject", "response": "I'm designed to only answer questions about cars. Could we stick to that topic?"}}
+
+    Conversation History:
+    {history_str}
+
+    User's Latest Query: "{user_query}"
+
+    Return only the single, valid JSON object for your chosen action.
     """
-    try:
-        response = model.generate_content(prompt)
-        text = response.text.strip().replace('```json', '').replace('```', '')
-        return json.loads(text)
-    except Exception as e:
-        st.error(f"An error occurred while determining the action: {e}")
-        return {"action": "error", "response": "Sorry, I had trouble understanding that. Could you rephrase?"}
+    for attempt in range(2):
+        try:
+            response = model.generate_content(prompt)
+            text = re.search(r'\{.*\}', response.text, re.DOTALL).group(0)
+            return json.loads(text)
+        except Exception:
+            continue
+    return {"action": "error", "response": "Sorry, I had trouble understanding that. Could you please rephrase?"}
+
 
 def extract_car_models(text):
-    pattern = r'(?:\b(?:about|buy|vs|compare|between|more on|tell me about|interested in|details on)\b)?[\s:,-]*([A-Z][a-z]+(?: [A-Z0-9][a-z0-9]*){0,3})'
-    return re.findall(pattern, text, flags=re.IGNORECASE)
+    pattern = r'(?:\b(?:vs|versus|compare|between|and)\b\s)?([A-Z][a-zA-Z0-9-]+\s(?:[A-Z][a-zA-Z0-9-]+-?)+|[A-Z][a-zA-Z0-9-]+\s[A-Z][a-zA-Z0-9-]+|[A-Z][a-zA-Z0-9-]+)'
+    models = re.findall(pattern, text)
+    stop_words = {'Compare', 'Between', 'And', 'The', 'A'}
+    return [model.strip() for model in models if model.strip() not in stop_words]
 
 
 def get_recommendations_and_analysis(full_context_query):
-    prompt = f"""
-    You're an expert AI Car Analyst. Recommend 3 cars based on the context and analyze them.
 
-    CONTEXT:
+    prompt = f"""
+    You're an expert AI Car Analyst. Based on the user's request, recommend 3 cars and provide an analysis.
+
+    FULL CONVERSATION CONTEXT:
     {full_context_query}
 
-    Datasets:
-    NEW US CARS (sampled), USED US CARS (sampled), USED EUROPEAN CARS (sampled)
+    *** CRITICAL INSTRUCTION ON BUDGET INTERPRETATION ***
+    When a user provides a budget, you must interpret it as a target price point, not just a maximum limit. A user with a high budget (e.g., $100,000) is interested in the luxury, performance, or high-end vehicles that fit that price range. Do NOT recommend entry-level or mass-market vehicles to a user with a high budget. Your recommendations should be appropriate for the market segment implied by the budget.
 
-    1. Pick 3 cars matching budget & type (new/used).
-    2. For each, provide:
-      - Summary
-      - US New Price
-      - Avg US Used Price (within budget)
-      - Avg EU Used Price (within budget)
-    3. Respond in structured JSON as:
+    INSTRUCTIONS:
+    1.  Analyze the user's needs from the context, paying special attention to the budget as a target.
+    2.  Select 3 car models from your knowledge that are the best fit for that market segment.
+    3.  For each car, provide a compelling summary and an estimated price range.
+    4.  You MUST respond in a valid JSON object like this example. Price must be an integer.
+
+    EXAMPLE JSON RESPONSE:
     {{
       "recommendations": [
         {{
-          "make": "Toyota",
-          "model": "Camry",
-          "summary": "Reliable, fuel-efficient midsize sedan...",
-          "us_market": {{"new_car_price_usd": 24000, "average_used_price_usd": 19500}},
-          "europe_market": {{"average_used_price_eur": 17000}}
-        }},
-        ...
-      ]
-    }}
-    """
-    try:
-        # Note: In a real app, you'd pass these dataframes to the model.
-        # For now, we simulate this by having the data loaded in the app's context.
-        response = model.generate_content(prompt)
-        text = response.text.strip().replace('```json', '').replace('```', '')
-        return json.loads(text)
-    except Exception as e:
-        return {"error": str(e)}
-
-def compare_cars_with_ai(full_context_query):
-    prompt = f"""
-    You are a car expert AI. The user is trying to decide between two or more vehicles.
-
-    Based on this conversation:
-    {full_context_query}
-
-    Compare the models side-by-side in this structured JSON:
-    {{
-      "comparison": [
-        {{
-          "brand": "Tesla",
-          "summary": "Known for cutting-edge EVs with long range and advanced technology.",
-          "strengths": ["Long battery range", "Fast charging (Supercharger)", "Strong resale value"],
-          "weaknesses": ["Higher upfront cost", "Minimalist design may not appeal to everyone"]
+          "make": "BMW",
+          "model": "X5",
+          "summary": "The BMW X5 is a benchmark for luxury midsize SUVs, offering a powerful engine lineup, a premium interior, and engaging driving dynamics. It's a great choice for those who want performance and practicality without compromise.",
+          "price_range": {{
+            "min_price": 65000,
+            "max_price": 85000,
+            "type": "New"
+          }}
         }},
         {{
-          "brand": "Ford",
-          "summary": "Offers practical EVs like the Mustang Mach-E and F-150 Lightning, blending traditional design with new tech.",
-          "strengths": ["Lower price entry", "Familiar interior", "Solid ride quality"],
-          "weaknesses": ["Fewer charging stations", "Range slightly lower than Tesla"]
+          "make": "Porsche",
+          "model": "Cayenne",
+          "summary": "For the ultimate in performance SUVs, the Porsche Cayenne delivers a sports-car-like experience with the utility of an SUV. Its handling is exceptional, and the interior is crafted with high-quality materials.",
+          "price_range": {{
+            "min_price": 80000,
+            "max_price": 110000,
+            "type": "New"
+          }}
         }}
       ]
     }}
     """
     try:
         response = model.generate_content(prompt)
-        clean = response.text.strip().replace("```json", "").replace("```", "")
-        return json.loads(clean)
+        text = re.search(r'\{.*\}', response.text, re.DOTALL).group(0)
+        return json.loads(text)
     except Exception as e:
-        return {"error": str(e), "comparison": []}
+        return {"error": str(e), "recommendations": []}
 
-def analyze_specific_car_model(car_model):
+
+def compare_cars_with_ai(full_context_query):
+
     prompt = f"""
-    You are an expert automotive analyst. Give a clear, concise analysis of the following car model:
+    You are a car expert AI. The user is trying to decide between two or more vehicles.
+    Based on this conversation, create a side-by-side comparison.
 
-    Model: "{car_model}"
+    FULL CONVERSATION CONTEXT:
+    {full_context_query}
 
-    Your response must include:
-    - An overview of the vehicle
-    - Common pros and cons
-    - Target audience
-    - Typical market price range (if known)
+    INSTRUCTIONS:
+    1. Identify the car models the user wants to compare.
+    2. Provide a brief summary for each model.
+    3. List 2-3 key strengths and 2-3 key weaknesses for each.
+    4. Respond ONLY with a valid JSON object like the example below.
 
-    Structure the output as JSON like this:
+    EXAMPLE JSON RESPONSE:
     {{
-      "model": "Tesla Model Y",
-      "overview": "...",
-      "pros": [...],
-      "cons": [...],
-      "audience": "...",
-      "price_estimate_usd": "..."
+      "comparison": [
+        {{
+          "model": "Honda Civic",
+          "summary": "A compact car known for its sporty handling, fuel efficiency, and high reliability ratings. It's a great all-rounder for singles or small families.",
+          "strengths": ["Fun-to-drive dynamics", "Excellent fuel economy", "High resale value"],
+          "weaknesses": ["Road noise can be high at speed", "Base model is light on features"]
+        }},
+        {{
+          "model": "Toyota Corolla",
+          "summary": "The Corolla's reputation is built on reliability, comfort, and safety. It prioritizes a smooth ride and ease of use over sporty performance.",
+          "strengths": ["Legendary reliability", "Standard safety features", "Comfortable ride"],
+          "weaknesses": ["Uninspired engine performance", "Less engaging to drive than rivals"]
+        }}
+      ]
     }}
     """
     try:
         response = model.generate_content(prompt)
-        text = response.text.strip().replace('```json', '').replace('```', '')
+        text = re.search(r'\{.*\}', response.text, re.DOTALL).group(0)
+        return json.loads(text)
+    except Exception as e:
+        return {"error": str(e), "comparison": []}
+
+
+def analyze_specific_car_model(car_model):
+
+    prompt = f"""
+    You are an expert automotive analyst. Give a clear, concise analysis of the following car model.
+
+    MODEL TO ANALYZE: "{car_model}"
+
+    INSTRUCTIONS:
+    1.  Provide a one-paragraph overview of what the car is known for.
+    2.  List 3 distinct pros and 3 distinct cons.
+    3.  Describe the target audience for this vehicle.
+    4.  Provide a typical market price range.
+    5.  Respond ONLY in the following valid JSON format.
+
+    EXAMPLE JSON RESPONSE:
+    {{
+      "model": "Tesla Model Y",
+      "overview": "The Tesla Model Y is a fully electric compact SUV that has become incredibly popular for its blend of long-range capability, cutting-edge technology, and impressive performance. It shares many components with the Model 3 sedan but offers more practicality with its hatchback design and available third-row seat.",
+      "pros": ["Impressive real-world battery range", "Access to Tesla's reliable Supercharger network", "Quick acceleration and nimble handling"],
+      "cons": ["Stiff ride quality, especially on larger wheels", "Reliance on the touchscreen for most controls can be distracting", "Build quality can be inconsistent compared to legacy automakers"],
+      "audience": "Tech-savvy individuals and families looking for a practical EV with a focus on performance and access to the best charging infrastructure.",
+      "price_estimate_usd": "$45,000 - $60,000"
+    }}
+    """
+    try:
+        response = model.generate_content(prompt)
+        text = re.search(r'\{.*\}', response.text, re.DOTALL).group(0)
         return json.loads(text)
     except Exception as e:
         return {"error": str(e)}
 
-# ==============================================================================
-# STEP 4: STREAMLIT CHAT INTERFACE
-# ==============================================================================
 
-st.title("🚗 Autovisory: AI Car Market Analyst")
-st.write("Your expert guide to the global car market. Ask me anything about cars!")
 
-# Initialize chat history in session state
-if "history" not in st.session_state:
-    st.session_state.history = []
+# STEP 4: CHAT LOOP (SYNCED WITH LIVE APP LOGIC)
 
-# Display chat messages from history
-for message in st.session_state.history:
-    with st.chat_message(message["role"]):
-        st.markdown(message["parts"])
+def start_autovisory_conversation():
+    print("\n--- Autovisory - AI Based Global Car Market Analyst ---")
+    print("Ask me anything about cars (Type 'exit' to quit)")
+    history = []
+    try:
+        while True:
+            user = input("You: ")
+            if user.lower() == 'exit':
+                print("\nAutovisory: Goodbye!")
+                break
 
-# Accept user input
-if user_prompt := st.chat_input("What car are you looking for?"):
-    # Add user message to history and display it
-    st.session_state.history.append({"role": "user", "parts": user_prompt})
-    with st.chat_message("user"):
-        st.markdown(user_prompt)
+            print("\nAutovisory: Thinking...")
+            gemini_history = [{"role": "user" if msg.get("role") == "user" else "model", "parts": [msg.get("parts")]} for msg in history]
 
-    # Get AI response
-    with st.chat_message("assistant"):
-        with st.spinner("Autovisory is thinking..."):
-            action_data = determine_next_action(st.session_state.history, user_prompt)
-            action = action_data.get("action")
-            response_text = ""
+            action_data = determine_next_action(gemini_history, user)
+            action = action_data.get("action", "error")
 
-            if action == "reject":
-                response_text = action_data.get("response", "I can only answer car-related questions.")
-                st.markdown(response_text)
-
-            elif action == "clarify":
-                response_text = action_data.get("response", "I need more details to help you. What's your budget and primary use case?")
-                st.markdown(response_text)
-
-            elif action == "answer_general":
-                 response_text = action_data.get("response", "That's a great question! Let me explain...")
-                 st.markdown(response_text)
+            if action in ["reject", "clarify", "answer_general", "small_talk"]:
+                print("Autovisory:", action_data.get("response"))
 
             elif action == "recommend":
-                full_context = "\n".join([f"{msg['role']}: {msg['parts']}" for msg in st.session_state.history])
+                full_context = "\n".join([f"{msg['role']}: {msg['parts']}" for msg in history] + [f"user: {user}"])
+                print("Autovisory: Let me find some great options for that budget...")
                 recs = get_recommendations_and_analysis(full_context)
                 if recs.get("recommendations"):
-                    response_text = "Based on your preferences, here are 3 solid options:"
-                    st.markdown(response_text)
+                    print("Autovisory: Based on your preferences, here are 3 solid options:")
                     for r in recs["recommendations"]:
-                        st.markdown(f"#### 🚗 **{r['make']} {r['model']}**")
-                        st.markdown(f"**Summary**: {r['summary']}")
-                        us_market = r.get('us_market', {})
-                        eu_market = r.get('europe_market', {})
-                        st.markdown(f"**Prices:**")
-                        col1, col2, col3 = st.columns(3)
-                        col1.metric("New (US)", f"${us_market.get('new_car_price_usd', 'N/A'):,}", delta_color="off")
-                        col2.metric("Used (US)", f"${us_market.get('average_used_price_usd', 'N/A'):,}", delta_color="off")
-                        col3.metric("Used (EU)", f"€{eu_market.get('average_used_price_eur', 'N/A'):,}", delta_color="off")
+                        print(f"\n🚗 {r.get('make')} {r.get('model')}")
+                        print(f"   Summary: {r.get('summary', 'N/A')}")
+
+
+                        price_info = r.get('price_range', {})
+                        min_p = price_info.get('min_price', 0)
+                        max_p = price_info.get('max_price', 0)
+                        type_p = price_info.get('type', 'N/A')
+
+                        if min_p > 0 and max_p > 0:
+                            print(f"   Estimated Price: ${min_p:,} - ${max_p:,} ({type_p})")
+                        else:
+                            print("   Estimated Price: Not available")
                 else:
-                    response_text = "Sorry, I couldn't find good options with the provided details. Could you try rephrasing?"
-                    st.markdown(response_text)
+                    print("Autovisory: Sorry, I couldn't find good options with the provided details.")
 
             elif action == "analyze":
-                candidates = extract_car_models(user_prompt)
+                candidates = extract_car_models(user)
                 model_name = candidates[0] if candidates else ""
-                analysis = analyze_specific_car_model(model_name)
-                if analysis.get("model"):
-                    response_text = f"Here's a detailed analysis of the **{analysis['model']}**:"
-                    st.markdown(response_text)
-                    st.markdown(f"**📘 Overview:** {analysis['overview']}")
-                    st.markdown(f"**✅ Pros:** {', '.join(analysis['pros'])}")
-                    st.markdown(f"**⚠️ Cons:** {', '.join(analysis['cons'])}")
-                    st.markdown(f"**👥 Ideal For:** {analysis['audience']}")
-                    st.metric("Estimated Price", analysis['price_estimate_usd'])
+                if model_name:
+                    analysis = analyze_specific_car_model(model_name)
+                    if analysis.get("model"):
+                        print(f"Autovisory: Here's a detailed analysis of the {analysis['model']}:")
+                        print(f"  Overview: {analysis.get('overview', 'N/A')}")
+                        print(f"  Pros: {', '.join(analysis.get('pros', []))}")
+                        print(f"  Cons: {', '.join(analysis.get('cons', []))}")
+                        print(f"  Ideal For: {analysis.get('audience', 'N/A')}")
+                        print(f"  Estimated Price: {analysis.get('price_estimate_usd', 'N/A')}")
+                    else:
+                        print("Autovisory: Sorry, I couldn't analyze that model.")
                 else:
-                    response_text = "Sorry, I couldn't find detailed information for that specific model."
-                    st.markdown(response_text)
+                    print("Autovisory: I couldn't identify a model to analyze. Please be more specific.")
 
             elif action == "compare":
-                 full_context = "\n".join([f"{msg['role']}: {msg['parts']}" for msg in st.session_state.history])
-                 result = compare_cars_with_ai(full_context)
-                 if result.get("comparison"):
-                     response_text = "Here's a comparison of your choices:"
-                     st.markdown(response_text)
-                     for car in result["comparison"]:
-                         with st.expander(f"🚘 **{car['brand']}**"):
-                             st.markdown(f"**📝 Summary:** {car['summary']}")
-                             st.markdown(f"**✅ Strengths:**\n" + "\n".join([f"- {s}" for s in car['strengths']]))
-                             st.markdown(f"**⚠️ Weaknesses:**\n" + "\n".join([f"- {w}" for w in car['weaknesses']]))
-                 else:
-                     response_text = "I couldn't generate a comparison. Please make sure you mention at least two cars."
-                     st.markdown(response_text)
+                full_context = "\n".join([f"{msg['role']}: {msg['parts']}" for msg in history] + [f"user: {user}"])
+                result = compare_cars_with_ai(full_context)
+                if result.get("comparison"):
+                    print("Autovisory: Here's a comparison of your choices:")
+                    for car in result["comparison"]:
+                        print(f"\n  🚘 {car['model']}")
+                        print(f"     Summary: {car.get('summary', 'N/A')}")
+                        print(f"     Strengths: {', '.join(car.get('strengths', []))}")
+                        print(f"     Weaknesses: {', '.join(car.get('weaknesses', []))}")
+                else:
+                    print("Autovisory: Sorry, I couldn't generate a comparison. Please mention at least two models clearly.")
 
             else:
-                response_text = action_data.get("response", "I'm not sure how to respond to that. Please try another question.")
-                st.markdown(response_text)
+                print("Autovisory:", action_data.get("response", "I encountered an issue. Please try again."))
 
-            # Add AI response to history
-            st.session_state.history.append({"role": "assistant", "parts": response_text})
+            history.append({"role": "user", "parts": user})
+
+            history.append({"role": "assistant", "parts": "Okay, proceeding with that."})
+
+    except (EOFError, KeyboardInterrupt):
+        print("\nAutovisory: Session ended. Goodbye!")
+
+
+start_autovisory_conversation()
+
