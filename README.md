@@ -4,8 +4,15 @@
 
 **[➡️ View the Live App Here](https://autovisory-demo-app.streamlit.app/)**  <!-- ## 👈 PASTE YOUR LIVE APP LINK HERE! ## -->
 
-![Screenshot of Autovisory App]([img]https://i.imgur.com/KH5lctE.png[/img]) <!-- ## 👈 Optional: Add a screenshot of your app ## -->
+### Project Screenshots
 
+![Screenshot 1 of the Autovisory application](https://github.com/user-attachments/assets/bef8b8b4-224d-47f8-8106-99afe5e9a9d4)
+
+![Screenshot 2 of the Autovisory application](https://github.com/user-attachments/assets/397c4506-5c5c-4f75-a939-a4d2bfbd7bea)
+
+![Screenshot 3 of the Autovisory application](https://github.com/user-attachments/assets/229b0abe-675d-41ed-ae03-cba8fd312eca)
+
+![Screenshot 4 of the Autovisory application](https://github.com/user-attachments/assets/9a863173-ecc8-4a5d-afc5-6aab099cf522)
 ---
 
 ## ✨ Key Features
