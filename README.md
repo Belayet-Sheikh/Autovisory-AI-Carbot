@@ -1,6 +1,6 @@
 # 🚗 Autovisory - AI Car Market Analyst
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)]([https://YOUR-DEMO-APP-URL.streamlit.app](https://autovisory-demo-app.streamlit.app/))
+
 
 Autovisory is an interactive, AI-powered chatbot designed to be your expert guide in the complex world of cars. Powered by Google's Gemini Pro, this app helps users get clear, data-driven recommendations, comparisons, and analyses for new and used cars across the US and European markets.
 
