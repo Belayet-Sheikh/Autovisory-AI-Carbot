@@ -4,7 +4,7 @@
 
 **[➡️ View the Live App Here](https://autovisory-demo-app.streamlit.app/)**  <!-- ## 👈 PASTE YOUR LIVE APP LINK HERE! ## -->
 
-![Screenshot of Autovisory App](https://i.imgur.com/your-screenshot-url.png) <!-- ## 👈 Optional: Add a screenshot of your app ## -->
+![Screenshot of Autovisory App](https://imgur.com/a/vhD7k8C) <!-- ## 👈 Optional: Add a screenshot of your app ## -->
 
 ---
 
